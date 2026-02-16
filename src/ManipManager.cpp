@@ -86,19 +86,20 @@ void ManipManager::reset()
   }
   else
   {
-    nh_ = std::make_shared<ros::NodeHandle>();
+    nh_ = rclcpp::Node::make_shared("ManipManagerNode");
     // Use a dedicated queue so as not to call callbacks of other modules
-    nh_->setCallbackQueue(&callbackQueue_);
+    // nh_->setCallbackQueue(&callbackQueue_); //TODO
 
     if(!config_.objPoseTopic.empty())
     {
-      objPoseSub_ =
-          nh_->subscribe<geometry_msgs::PoseStamped>(config_.objPoseTopic, 1, &ManipManager::objPoseCallback, this);
+      objPoseSub_ = nh_->create_subscription<geometry_msgs::msg::PoseStamped>(
+          config_.objPoseTopic, 1, std::bind(&ManipManager::objPoseCallback, this, std::placeholders::_1));
     }
+
     if(!config_.objVelTopic.empty())
     {
-      objVelSub_ =
-          nh_->subscribe<geometry_msgs::TwistStamped>(config_.objVelTopic, 1, &ManipManager::objVelCallback, this);
+      objVelSub_ = nh_->create_subscription<geometry_msgs::msg::TwistStamped>(
+          config_.objVelTopic, 1, std::bind(&ManipManager::objVelCallback, this, std::placeholders::_1));
     }
   }
 
@@ -144,8 +145,8 @@ void ManipManager::reset()
 
 void ManipManager::stop()
 {
-  objPoseSub_.shutdown();
-  objVelSub_.shutdown();
+  objPoseSub_.reset();
+  objVelSub_.reset();
   nh_.reset();
 
   removeFromGUI(*ctl().gui());
@@ -155,7 +156,7 @@ void ManipManager::stop()
 void ManipManager::update()
 {
   // Call ROS callback
-  callbackQueue_.callAvailable(ros::WallDuration());
+  // callbackQueue_.callAvailable(ros::WallDuration()); // TODO
 
   if(velModeData_.enabled_)
   {
@@ -216,62 +217,67 @@ void ManipManager::addToGUI(mc_rtc::gui::StateBuilder & gui)
                  mc_rtc::gui::ArrayInput(
                      "Mass", {"cx", "cy", "cz", "fx", "fy", "fz"},
                      [this]() -> const sva::ImpedanceVecd & { return config_.impGain.mass().vec(); },
-                     [this](const Eigen::Vector6d & v) {
+                     [this](const Eigen::Vector6d & v)
+                     {
                        config_.impGain.mass().vec(v);
                        requireImpGainUpdate_ = true;
                      }),
                  mc_rtc::gui::ArrayInput(
                      "Damper", {"cx", "cy", "cz", "fx", "fy", "fz"},
                      [this]() -> const sva::ImpedanceVecd & { return config_.impGain.damper().vec(); },
-                     [this](const Eigen::Vector6d & v) {
+                     [this](const Eigen::Vector6d & v)
+                     {
                        config_.impGain.damper().vec(v);
                        requireImpGainUpdate_ = true;
                      }),
                  mc_rtc::gui::ArrayInput(
                      "Spring", {"cx", "cy", "cz", "fx", "fy", "fz"},
                      [this]() -> const sva::ImpedanceVecd & { return config_.impGain.spring().vec(); },
-                     [this](const Eigen::Vector6d & v) {
+                     [this](const Eigen::Vector6d & v)
+                     {
                        config_.impGain.spring().vec(v);
                        requireImpGainUpdate_ = true;
                      }),
                  mc_rtc::gui::ArrayInput(
                      "Wrench", {"cx", "cy", "cz", "fx", "fy", "fz"},
                      [this]() -> const sva::ImpedanceVecd & { return config_.impGain.wrench().vec(); },
-                     [this](const Eigen::Vector6d & v) {
+                     [this](const Eigen::Vector6d & v)
+                     {
                        config_.impGain.wrench().vec(v);
                        requireImpGainUpdate_ = true;
                      }));
 
-  gui.addElement(
-      {ctl().name(), config_.name, "HandWrench"},
-      mc_rtc::gui::ArrayInput(
-          "Both hands wrench (in hand frame)", {"cx", "cy", "cz", "fx", "fy", "fz"},
-          [this]() {
-            sva::ForceVecd wrench = sva::ForceVecd::Zero();
-            for(const auto & hand : Hands::Both)
-            {
-              wrench += calcRefHandWrench(hand, ctl().t());
-            }
-            wrench /= 2.0;
-            return wrench.vector();
-          },
-          [this](const Eigen::Vector6d & v) {
-            sva::ForceVecd wrench = sva::ForceVecd(v);
-            for(const auto & hand : Hands::Both)
-            {
-              setRefHandWrench(hand, wrench, ctl().t() + 1.0, 3.0);
-            }
-          }),
-      mc_rtc::gui::ArrayInput(
-          "Left hand wrench (in hand frame)", {"cx", "cy", "cz", "fx", "fy", "fz"},
-          [this]() { return calcRefHandWrench(Hand::Left, ctl().t()).vector(); },
-          [this](const Eigen::Vector6d & v) { setRefHandWrench(Hand::Left, sva::ForceVecd(v), ctl().t() + 1.0, 3.0); }),
-      mc_rtc::gui::ArrayInput(
-          "Right hand wrench (in hand frame)", {"cx", "cy", "cz", "fx", "fy", "fz"},
-          [this]() { return calcRefHandWrench(Hand::Right, ctl().t()).vector(); },
-          [this](const Eigen::Vector6d & v) {
-            setRefHandWrench(Hand::Right, sva::ForceVecd(v), ctl().t() + 1.0, 3.0);
-          }));
+  gui.addElement({ctl().name(), config_.name, "HandWrench"},
+                 mc_rtc::gui::ArrayInput(
+                     "Both hands wrench (in hand frame)", {"cx", "cy", "cz", "fx", "fy", "fz"},
+                     [this]()
+                     {
+                       sva::ForceVecd wrench = sva::ForceVecd::Zero();
+                       for(const auto & hand : Hands::Both)
+                       {
+                         wrench += calcRefHandWrench(hand, ctl().t());
+                       }
+                       wrench /= 2.0;
+                       return wrench.vector();
+                     },
+                     [this](const Eigen::Vector6d & v)
+                     {
+                       sva::ForceVecd wrench = sva::ForceVecd(v);
+                       for(const auto & hand : Hands::Both)
+                       {
+                         setRefHandWrench(hand, wrench, ctl().t() + 1.0, 3.0);
+                       }
+                     }),
+                 mc_rtc::gui::ArrayInput(
+                     "Left hand wrench (in hand frame)", {"cx", "cy", "cz", "fx", "fy", "fz"},
+                     [this]() { return calcRefHandWrench(Hand::Left, ctl().t()).vector(); },
+                     [this](const Eigen::Vector6d & v)
+                     { setRefHandWrench(Hand::Left, sva::ForceVecd(v), ctl().t() + 1.0, 3.0); }),
+                 mc_rtc::gui::ArrayInput(
+                     "Right hand wrench (in hand frame)", {"cx", "cy", "cz", "fx", "fy", "fz"},
+                     [this]() { return calcRefHandWrench(Hand::Right, ctl().t()).vector(); },
+                     [this](const Eigen::Vector6d & v)
+                     { setRefHandWrench(Hand::Right, sva::ForceVecd(v), ctl().t() + 1.0, 3.0); }));
 }
 
 void ManipManager::removeFromGUI(mc_rtc::gui::StateBuilder & gui)
@@ -679,14 +685,13 @@ void ManipManager::updateHandTraj()
       if(force.norm() > 0.0)
       {
         sva::PTransformd pose = ctl().handTasks_.at(hand)->targetPose();
-        ctl().gui()->addElement({ctl().name(), config_.name, "HandWrench"},
-                                mc_rtc::gui::Arrow(
-                                    std::to_string(hand) + "HandForceArrow", arrowConfig,
-                                    [this, pose]() -> Eigen::Vector3d { return pose.translation(); },
-                                    [this, pose, force]() -> Eigen::Vector3d {
-                                      return pose.translation()
-                                             + config_.handForceArrowScale * (pose.rotation().transpose() * force);
-                                    }));
+        ctl().gui()->addElement(
+            {ctl().name(), config_.name, "HandWrench"},
+            mc_rtc::gui::Arrow(
+                std::to_string(hand) + "HandForceArrow", arrowConfig,
+                [this, pose]() -> Eigen::Vector3d { return pose.translation(); },
+                [this, pose, force]() -> Eigen::Vector3d
+                { return pose.translation() + config_.handForceArrowScale * (pose.rotation().transpose() * force); }));
       }
     }
   }
@@ -714,9 +719,8 @@ void ManipManager::updateFootstep()
   auto convertTo2d = [](const sva::PTransformd & pose) -> Eigen::Vector3d {
     return Eigen::Vector3d(pose.translation().x(), pose.translation().y(), mc_rbdyn::rpyFromMat(pose.rotation()).z());
   };
-  auto convertTo3d = [](const Eigen::Vector3d & trans) -> sva::PTransformd {
-    return sva::PTransformd(sva::RotZ(trans.z()), Eigen::Vector3d(trans.x(), trans.y(), 0));
-  };
+  auto convertTo3d = [](const Eigen::Vector3d & trans) -> sva::PTransformd
+  { return sva::PTransformd(sva::RotZ(trans.z()), Eigen::Vector3d(trans.x(), trans.y(), 0)); };
 
   Foot foot = Foot::Left;
   sva::PTransformd footMidpose = projGround(sva::interpolate(ctl().footManager_->targetFootPose(Foot::Left),
@@ -747,9 +751,8 @@ void ManipManager::updateForVelMode()
   auto convertTo2d = [](const sva::PTransformd & pose) -> Eigen::Vector3d {
     return Eigen::Vector3d(pose.translation().x(), pose.translation().y(), mc_rbdyn::rpyFromMat(pose.rotation()).z());
   };
-  auto convertTo3d = [](const Eigen::Vector3d & trans) -> sva::PTransformd {
-    return sva::PTransformd(sva::RotZ(trans.z()), Eigen::Vector3d(trans.x(), trans.y(), 0));
-  };
+  auto convertTo3d = [](const Eigen::Vector3d & trans) -> sva::PTransformd
+  { return sva::PTransformd(sva::RotZ(trans.z()), Eigen::Vector3d(trans.x(), trans.y(), 0)); };
 
   const auto & frontFootstep = ctl().footManager_->footstepQueue().front();
 
@@ -767,7 +770,8 @@ void ManipManager::updateForVelMode()
   {
     sva::PTransformd frontFootMidpose =
         ctl().footManager_->config().midToFootTranss.at(frontFootstep.foot).inv() * frontFootstep.pose;
-    auto calcFootstepDeltaTrans = [&](const Eigen::Vector3d & _objDeltaTrans) {
+    auto calcFootstepDeltaTrans = [&](const Eigen::Vector3d & _objDeltaTrans)
+    {
       sva::PTransformd newWaypointPose = convertTo3d(_objDeltaTrans) * velModeData_.frontWaypointPose_;
       sva::PTransformd nextFootMidpose = config_.objToFootMidTrans * newWaypointPose;
       return convertTo2d(nextFootMidpose * frontFootMidpose.inv());
@@ -814,7 +818,7 @@ Footstep ManipManager::makeFootstep(const Foot & foot,
                   startTime + config_.footstepDuration, swingTrajConfig);
 }
 
-void ManipManager::objPoseCallback(const geometry_msgs::PoseStamped::ConstPtr & poseStMsg)
+void ManipManager::objPoseCallback(const geometry_msgs::msg::PoseStamped::ConstSharedPtr & poseStMsg)
 {
   // Update real object pose
   const auto & poseMsg = poseStMsg->pose;
@@ -827,7 +831,7 @@ void ManipManager::objPoseCallback(const geometry_msgs::PoseStamped::ConstPtr & 
   ctl().realObj().posW(pose);
 }
 
-void ManipManager::objVelCallback(const geometry_msgs::TwistStamped::ConstPtr & twistStMsg)
+void ManipManager::objVelCallback(const geometry_msgs::msg::TwistStamped::ConstSharedPtr & twistStMsg)
 {
   // Update real object velocity
   const auto & twistMsg = twistStMsg->twist;
