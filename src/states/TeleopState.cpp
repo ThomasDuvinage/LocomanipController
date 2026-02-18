@@ -33,8 +33,8 @@ void TeleopState::start(mc_control::fsm::Controller & _ctl)
 
   // Setup ROS
   nh_ = rclcpp::Node::make_shared("TeleopStateNode");
-  // Use a dedicated queue so as not to call callbacks of other modules
-  // nh_->setCallbackQueue(&callbackQueue_); //TODO
+  executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+  executor_->add_node(nh_);
   twistSub_ = nh_->create_subscription<geometry_msgs::msg::Twist>(twistTopicName, 1, std::bind(&TeleopState::twistCallback, this, std::placeholders::_1));
 
   // Setup GUI
@@ -63,7 +63,7 @@ bool TeleopState::run(mc_control::fsm::Controller &)
   }
 
   // Call ROS callback
-  // callbackQueue_.callAvailable(ros::WallDuration()); //TODO
+  executor_->spin_once(std::chrono::seconds(0));
 
   // Update GUI
   bool velMode = ctl().manipManager_->velModeEnabled();

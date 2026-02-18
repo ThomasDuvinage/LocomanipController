@@ -13,7 +13,6 @@
 #include <geometry_msgs/msg/detail/pose_stamped__struct.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
-// #include <ros/callback_queue.h> # TODO
 #include <rclcpp/rclcpp.hpp>
 
 #include <TrajColl/CubicInterpolator.h>
@@ -437,7 +436,7 @@ protected:
   //! ROS variables
   //! @{
   rclcpp::Node::SharedPtr nh_;
-  // ros::CallbackQueue callbackQueue_; // TODO
+  rclcpp::Executor::SharedPtr executor_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr objPoseSub_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr objVelSub_;
   //! @}

@@ -87,8 +87,8 @@ void ManipManager::reset()
   else
   {
     nh_ = rclcpp::Node::make_shared("ManipManagerNode");
-    // Use a dedicated queue so as not to call callbacks of other modules
-    // nh_->setCallbackQueue(&callbackQueue_); //TODO
+    executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+    executor_->add_node(nh_);
 
     if(!config_.objPoseTopic.empty())
     {
@@ -156,7 +156,7 @@ void ManipManager::stop()
 void ManipManager::update()
 {
   // Call ROS callback
-  // callbackQueue_.callAvailable(ros::WallDuration()); // TODO
+  executor_->spin_once(std::chrono::seconds(0));
 
   if(velModeData_.enabled_)
   {

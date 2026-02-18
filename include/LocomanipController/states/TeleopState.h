@@ -3,7 +3,6 @@
 #include <LocomanipController/State.h>
 
 #include <geometry_msgs/msg/twist.hpp>
-// #include <ros/callback_queue.h> //TODO 
 #include <rclcpp/rclcpp.hpp>
 
 namespace LMC
@@ -35,7 +34,7 @@ protected:
   //! ROS variables
   //! @{
   rclcpp::Node::SharedPtr nh_;
-  // ros::CallbackQueue callbackQueue_; // TODO
+  rclcpp::Executor::SharedPtr executor_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twistSub_;
   //! @}
 };
